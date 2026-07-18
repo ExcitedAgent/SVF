@@ -40,6 +40,29 @@
 using namespace SVF;
 using namespace SVFUtil;
 
+void AbstractInterpretation::notifyNodeState(
+    const ICFGNode* node, AEStatePoint point,
+    const AbstractState& state) const
+{
+    if (observer)
+        observer->onNodeState(node, point, state);
+}
+
+void AbstractInterpretation::notifyCheckpoint(
+    const CallICFGNode* node, AECheckpointKind kind,
+    AECheckpointOutcome outcome, const AbstractState* state) const
+{
+    if (observer)
+        observer->onCheckpoint(node, kind, outcome, state);
+}
+
+void AbstractInterpretation::notifyExternalCall(
+    const CallICFGNode* node, AEExternalCallOutcome outcome) const
+{
+    if (observer)
+        observer->onExternalCall(node, outcome);
+}
+
 
 void AbstractInterpretation::runOnModule()
 {
@@ -75,6 +98,12 @@ AbstractInterpretation::AbstractInterpretation()
 /// Must only be called after the option parser has populated AESparsity.
 AbstractInterpretation& AbstractInterpretation::getAEInstance()
 {
+    return getAEInstance(static_cast<AESparsity>(Options::AESparsity()));
+}
+
+AbstractInterpretation& AbstractInterpretation::getAEInstance(
+    AESparsity sparsity)
+{
     // Leak the singleton on purpose.  AbstractInterpretation owns a
     // Map<std::string, std::function<void(const CallICFGNode*)>> func_map
     // whose lambda closures back-reference state owned by other globals
@@ -91,9 +120,10 @@ AbstractInterpretation& AbstractInterpretation::getAEInstance()
     //
     // A process-lifetime singleton has no observable lifecycle past
     // program exit, so leaking is benign and avoids the use-after-destroy.
-    static AbstractInterpretation* instance = []() -> AbstractInterpretation*
+    static AbstractInterpretation* instance =
+        [sparsity]() -> AbstractInterpretation*
     {
-        switch (Options::AESparsity())
+        switch (sparsity)
         {
         case AESparsity::SemiSparse:
             return new SemiSparseAbstractInterpretation();
@@ -245,6 +275,8 @@ void AbstractInterpretation::handleGlobalNode()
     // directly. Same for BlkPtr below.
     init[IRGraph::NullPtr] = AddressValue();
 
+    notifyNodeState(node, AEStatePoint::Before, init);
+
     // Global Node, we just need to handle addr, load, store, copy and gep
     for (const SVFStmt *stmt: node->getSVFStmts())
     {
@@ -257,6 +289,8 @@ void AbstractInterpretation::handleGlobalNode()
     AbstractValue blkPtrValue(IntervalValue::top());
     blkPtrValue.getAddrs().insert(BlackHoleObjAddr);
     abstractTrace[node][PAG::getPAG()->getBlkPtr()] = blkPtrValue;
+
+    notifyNodeState(node, AEStatePoint::After, abstractTrace[node]);
 }
 
 /// Pull-based state merge: for each predecessor that has an abstract state,
@@ -744,6 +778,8 @@ bool AbstractInterpretation::handleICFGNode(const ICFGNode* node)
     // Store the previous state for fixpoint detection
     AbstractState prevState = getAbsState(node);
 
+    notifyNodeState(node, AEStatePoint::Before, getAbsState(node));
+
     stat->getBlockTrace()++;
     stat->getICFGNodeTrace()++;
 
@@ -762,6 +798,8 @@ bool AbstractInterpretation::handleICFGNode(const ICFGNode* node)
     // Run detectors
     for (auto& detector: detectors)
         detector->detect(node);
+
+    notifyNodeState(node, AEStatePoint::After, getAbsState(node));
     stat->countStateSize();
 
     // Track this node as analyzed (for coverage statistics across all entry points)

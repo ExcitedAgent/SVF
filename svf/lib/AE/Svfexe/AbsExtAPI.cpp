@@ -80,12 +80,18 @@ void AbsExtAPI::initExtFunMap()
         const AbstractValue& arg0Val = ae->getAbsValue(callNode->getArgument(0), callNode);
         if (arg0Val.getInterval().equals(IntervalValue(1, 1)))
         {
+            recordCheckpoint(callNode, AECheckpointKind::Assert,
+                             AECheckpointOutcome::Proved);
             SVFUtil::errs() << SVFUtil::sucMsg("The assertion is successfully verified!!\n");
         }
         else
         {
+            recordCheckpoint(callNode, AECheckpointKind::Assert,
+                             AECheckpointOutcome::Candidate);
             SVFUtil::errs() << SVFUtil::errMsg("Assertion failure, this svf_assert cannot be verified!!\n") << callNode->toString() << "\n";
-            assert(false);
+            if (ae->getCheckpointFailurePolicy() ==
+                    AECheckpointFailurePolicy::FailFast)
+                assert(false);
         }
         return;
     };
@@ -97,12 +103,18 @@ void AbsExtAPI::initExtFunMap()
         const AbstractValue& arg1Val = ae->getAbsValue(callNode->getArgument(1), callNode);
         if (arg0Val.getInterval().equals(arg1Val.getInterval()))
         {
+            recordCheckpoint(callNode, AECheckpointKind::AssertEqual,
+                             AECheckpointOutcome::Proved);
             SVFUtil::errs() << SVFUtil::sucMsg("The assertion is successfully verified!!\n");
         }
         else
         {
+            recordCheckpoint(callNode, AECheckpointKind::AssertEqual,
+                             AECheckpointOutcome::Candidate);
             SVFUtil::errs() <<"svf_assert_eq Fail. " << callNode->toString() << "\n";
-            assert(false);
+            if (ae->getCheckpointFailurePolicy() ==
+                    AECheckpointFailurePolicy::FailFast)
+                assert(false);
         }
         return;
     };
@@ -264,6 +276,15 @@ AbstractState& AbsExtAPI::getAbsState(const SVF::ICFGNode* node)
     return ae->getAbsState(node);
 }
 
+void AbsExtAPI::recordCheckpoint(const CallICFGNode* call,
+                                 AECheckpointKind kind,
+                                 AECheckpointOutcome outcome)
+{
+    assertionCheckpoints.erase(call);
+    if (ae->getObserver())
+        ae->notifyCheckpoint(call, kind, outcome, &ae->getAbsState(call));
+}
+
 void AbsExtAPI::collectCheckPoint()
 {
     // traverse every ICFGNode
@@ -278,6 +299,11 @@ void AbsExtAPI::collectCheckPoint()
         {
             if (const FunObjVar *fun = call->getCalledFunction())
             {
+                if (fun->getName() == "svf_assert")
+                    assertionCheckpoints[call] = AECheckpointKind::Assert;
+                else if (fun->getName() == "svf_assert_eq")
+                    assertionCheckpoints[call] = AECheckpointKind::AssertEqual;
+
                 if (ae_checkpoint_names.find(fun->getName()) !=
                         ae_checkpoint_names.end())
                 {
@@ -306,6 +332,19 @@ void AbsExtAPI::collectCheckPoint()
 
 void AbsExtAPI::checkPointAllSet()
 {
+    const bool continueAfterAssertion =
+        ae->getCheckpointFailurePolicy() ==
+        AECheckpointFailurePolicy::Continue;
+
+    for (const auto& [call, kind] : assertionCheckpoints)
+    {
+        ae->notifyCheckpoint(call, kind, AECheckpointOutcome::Unreached,
+                             nullptr);
+        if (continueAfterAssertion)
+            checkpoints.erase(call);
+    }
+    assertionCheckpoints.clear();
+
     if (checkpoints.size() == 0)
     {
         return;
@@ -365,11 +404,19 @@ void AbsExtAPI::handleExtAPI(const CallICFGNode *call)
         if (annotation.find("STRCAT") != std::string::npos)
             extType =  STRCAT;
     }
+
+    auto handler = func_map.find(fun->getName());
+    const bool hasModel = extType != UNCLASSIFIED || handler != func_map.end();
+    const AEExternalCallOutcome outcome =
+        hasModel ? AEExternalCallOutcome::Modeled :
+        AEExternalCallOutcome::Unmodeled;
+    ae->notifyExternalCall(call, outcome);
+
     if (extType == UNCLASSIFIED)
     {
-        if (func_map.find(fun->getName()) != func_map.end())
+        if (handler != func_map.end())
         {
-            func_map[fun->getName()](call);
+            handler->second(call);
         }
         else
         {

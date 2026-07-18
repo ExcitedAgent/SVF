@@ -32,6 +32,7 @@
 #include "AE/Core/AbstractState.h"
 #include "AE/Core/ICFGWTO.h"
 #include "AE/Svfexe/AEDetector.h"
+#include "AE/Svfexe/AEObserver.h"
 #include "AE/Svfexe/AEWTO.h"
 #include "AE/Svfexe/AbsExtAPI.h"
 #include "AE/Svfexe/AEStat.h"
@@ -61,6 +62,7 @@ class AbstractInterpretation
 {
     friend class AEStat;
     friend class AEAPI;
+    friend class AbsExtAPI;
     friend class BufOverflowDetector;
     friend class NullptrDerefDetector;
 
@@ -121,9 +123,37 @@ public:
     /// dense base.  Must be called only after the option parser has run.
     static AbstractInterpretation& getAEInstance();
 
+    /// Factory overload for library clients that select sparsity without the
+    /// command-line option system.  The first factory call selects the
+    /// process-lifetime singleton; later calls return that same instance.
+    static AbstractInterpretation& getAEInstance(AESparsity sparsity);
+
     void addDetector(std::unique_ptr<AEDetector> detector)
     {
         detectors.push_back(std::move(detector));
+    }
+
+    /// Install a non-owning observer.  The observer must outlive
+    /// runOnModule().  Passing null disables observation.
+    void setObserver(AEObserver* value)
+    {
+        observer = value;
+    }
+
+    AEObserver* getObserver() const
+    {
+        return observer;
+    }
+
+    /// Select assertion handling.  FailFast preserves the stock AE behavior.
+    void setCheckpointFailurePolicy(AECheckpointFailurePolicy value)
+    {
+        checkpointFailurePolicy = value;
+    }
+
+    AECheckpointFailurePolicy getCheckpointFailurePolicy() const
+    {
+        return checkpointFailurePolicy;
     }
 
     /// Retrieve SVFVar given its ID; asserts if no such variable exists
@@ -252,6 +282,16 @@ protected:
                                         const ICFGNode* succ);
 
 private:
+    void notifyNodeState(const ICFGNode* node, AEStatePoint point,
+                         const AbstractState& state) const;
+
+    void notifyCheckpoint(const CallICFGNode* node, AECheckpointKind kind,
+                          AECheckpointOutcome outcome,
+                          const AbstractState* state) const;
+
+    void notifyExternalCall(const CallICFGNode* node,
+                            AEExternalCallOutcome outcome) const;
+
     /// Initialize abstract state for the global ICFG node and process global
     /// statements
     virtual void handleGlobalNode();
@@ -331,6 +371,9 @@ private:
 
     std::vector<std::unique_ptr<AEDetector>> detectors;
     AbsExtAPI* utils;
+    AEObserver* observer{nullptr};
+    AECheckpointFailurePolicy checkpointFailurePolicy{
+        AECheckpointFailurePolicy::FailFast};
 
 protected:
     /// Data and helpers reachable from SparseAbstractInterpretation.

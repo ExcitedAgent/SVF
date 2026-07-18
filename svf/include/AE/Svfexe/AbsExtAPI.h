@@ -30,6 +30,7 @@
 
 #include "AE/Core/AbstractState.h"
 #include "AE/Core/IntervalValue.h"
+#include "AE/Svfexe/AEObserver.h"
 #include "SVFIR/SVFIR.h"
 #include "Util/GeneralType.h"
 
@@ -65,6 +66,11 @@ private:
      * @param ae Reference to the AbstractInterpretation instance.
      */
     AbsExtAPI(AbstractInterpretation* ae);
+
+    void recordCheckpoint(const CallICFGNode* call, AECheckpointKind kind,
+                          AECheckpointOutcome outcome);
+
+    Map<const CallICFGNode*, AECheckpointKind> assertionCheckpoints;
 
 public:
     /**
