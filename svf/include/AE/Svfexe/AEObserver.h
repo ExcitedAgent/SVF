@@ -24,16 +24,8 @@
 namespace SVF
 {
 
-class AbstractState;
 class CallICFGNode;
 class ICFGNode;
-
-/// Location of an observed state relative to an ICFG node's transfer.
-enum class AEStatePoint
-{
-    Before,
-    After
-};
 
 /// Kind of source-level checkpoint handled by abstract execution.
 enum class AECheckpointKind
@@ -70,29 +62,21 @@ enum class AECheckpointFailurePolicy
 /// Optional, non-owning observation interface for abstract execution.
 ///
 /// Node callbacks are emitted for every analysis visit, including repeated
-/// visits during widening and narrowing.  Consumers that need a final trace
-/// should copy the latest state for each node.  State references are borrowed
-/// and valid only for the duration of the callback.
-///
-/// An observer may query the AbstractInterpretation that owns it during a
-/// callback.  This is useful for materializing values whose authoritative
-/// storage is at a sparse definition site.  Observers must not mutate the
+/// visits during widening and narrowing. Observers must not mutate the
 /// running analysis.
 class AEObserver
 {
 public:
     virtual ~AEObserver() = default;
 
-    /// Observe a reachable node immediately before or after its transfer.
-    virtual void onNodeState(const ICFGNode*, AEStatePoint,
-                             const AbstractState&)
+    /// Observe a reachable node immediately before its transfer.
+    virtual void onNodeVisit(const ICFGNode*)
     {
     }
 
-    /// Observe an assertion result.  `state` is the reached checkpoint's
-    /// current state for Proved/Candidate and is null for Unreached.
+    /// Observe an assertion result.
     virtual void onCheckpoint(const CallICFGNode*, AECheckpointKind,
-                              AECheckpointOutcome, const AbstractState*)
+                              AECheckpointOutcome)
     {
     }
 

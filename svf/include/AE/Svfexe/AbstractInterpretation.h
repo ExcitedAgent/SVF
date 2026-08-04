@@ -282,12 +282,10 @@ protected:
                                         const ICFGNode* succ);
 
 private:
-    void notifyNodeState(const ICFGNode* node, AEStatePoint point,
-                         const AbstractState& state) const;
+    void notifyNodeVisit(const ICFGNode* node) const;
 
     void notifyCheckpoint(const CallICFGNode* node, AECheckpointKind kind,
-                          AECheckpointOutcome outcome,
-                          const AbstractState* state) const;
+                          AECheckpointOutcome outcome) const;
 
     void notifyExternalCall(const CallICFGNode* node,
                             AEExternalCallOutcome outcome) const;

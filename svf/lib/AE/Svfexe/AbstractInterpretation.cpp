@@ -40,20 +40,18 @@
 using namespace SVF;
 using namespace SVFUtil;
 
-void AbstractInterpretation::notifyNodeState(
-    const ICFGNode* node, AEStatePoint point,
-    const AbstractState& state) const
+void AbstractInterpretation::notifyNodeVisit(const ICFGNode* node) const
 {
     if (observer)
-        observer->onNodeState(node, point, state);
+        observer->onNodeVisit(node);
 }
 
 void AbstractInterpretation::notifyCheckpoint(
     const CallICFGNode* node, AECheckpointKind kind,
-    AECheckpointOutcome outcome, const AbstractState* state) const
+    AECheckpointOutcome outcome) const
 {
     if (observer)
-        observer->onCheckpoint(node, kind, outcome, state);
+        observer->onCheckpoint(node, kind, outcome);
 }
 
 void AbstractInterpretation::notifyExternalCall(
@@ -275,7 +273,7 @@ void AbstractInterpretation::handleGlobalNode()
     // directly. Same for BlkPtr below.
     init[IRGraph::NullPtr] = AddressValue();
 
-    notifyNodeState(node, AEStatePoint::Before, init);
+    notifyNodeVisit(node);
 
     // Global Node, we just need to handle addr, load, store, copy and gep
     for (const SVFStmt *stmt: node->getSVFStmts())
@@ -290,7 +288,6 @@ void AbstractInterpretation::handleGlobalNode()
     blkPtrValue.getAddrs().insert(BlackHoleObjAddr);
     abstractTrace[node][PAG::getPAG()->getBlkPtr()] = blkPtrValue;
 
-    notifyNodeState(node, AEStatePoint::After, abstractTrace[node]);
 }
 
 /// Pull-based state merge: for each predecessor that has an abstract state,
@@ -778,7 +775,7 @@ bool AbstractInterpretation::handleICFGNode(const ICFGNode* node)
     // Store the previous state for fixpoint detection
     AbstractState prevState = getAbsState(node);
 
-    notifyNodeState(node, AEStatePoint::Before, getAbsState(node));
+    notifyNodeVisit(node);
 
     stat->getBlockTrace()++;
     stat->getICFGNodeTrace()++;
@@ -799,7 +796,6 @@ bool AbstractInterpretation::handleICFGNode(const ICFGNode* node)
     for (auto& detector: detectors)
         detector->detect(node);
 
-    notifyNodeState(node, AEStatePoint::After, getAbsState(node));
     stat->countStateSize();
 
     // Track this node as analyzed (for coverage statistics across all entry points)

@@ -282,7 +282,7 @@ void AbsExtAPI::recordCheckpoint(const CallICFGNode* call,
 {
     assertionCheckpoints.erase(call);
     if (ae->getObserver())
-        ae->notifyCheckpoint(call, kind, outcome, &ae->getAbsState(call));
+        ae->notifyCheckpoint(call, kind, outcome);
 }
 
 void AbsExtAPI::collectCheckPoint()
@@ -338,8 +338,7 @@ void AbsExtAPI::checkPointAllSet()
 
     for (const auto& [call, kind] : assertionCheckpoints)
     {
-        ae->notifyCheckpoint(call, kind, AECheckpointOutcome::Unreached,
-                             nullptr);
+        ae->notifyCheckpoint(call, kind, AECheckpointOutcome::Unreached);
         if (continueAfterAssertion)
             checkpoints.erase(call);
     }
