@@ -75,6 +75,12 @@ AbstractInterpretation::AbstractInterpretation()
 /// Must only be called after the option parser has populated AESparsity.
 AbstractInterpretation& AbstractInterpretation::getAEInstance()
 {
+    return getAEInstance(static_cast<AESparsity>(Options::AESparsity()));
+}
+
+AbstractInterpretation& AbstractInterpretation::getAEInstance(
+    AESparsity sparsity)
+{
     // Leak the singleton on purpose.  AbstractInterpretation owns a
     // Map<std::string, std::function<void(const CallICFGNode*)>> func_map
     // whose lambda closures back-reference state owned by other globals
@@ -91,9 +97,10 @@ AbstractInterpretation& AbstractInterpretation::getAEInstance()
     //
     // A process-lifetime singleton has no observable lifecycle past
     // program exit, so leaking is benign and avoids the use-after-destroy.
-    static AbstractInterpretation* instance = []() -> AbstractInterpretation*
+    static AbstractInterpretation* instance =
+        [sparsity]() -> AbstractInterpretation*
     {
-        switch (Options::AESparsity())
+        switch (sparsity)
         {
         case AESparsity::SemiSparse:
             return new SemiSparseAbstractInterpretation();
