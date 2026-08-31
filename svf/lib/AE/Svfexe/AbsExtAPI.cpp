@@ -85,7 +85,9 @@ void AbsExtAPI::initExtFunMap()
         else
         {
             SVFUtil::errs() << SVFUtil::errMsg("Assertion failure, this svf_assert cannot be verified!!\n") << callNode->toString() << "\n";
-            assert(false);
+            if (ae->getAssertionFailurePolicy() ==
+                    AbstractInterpretation::AssertionFailurePolicy::FailFast)
+                assert(false);
         }
         return;
     };
@@ -102,7 +104,9 @@ void AbsExtAPI::initExtFunMap()
         else
         {
             SVFUtil::errs() <<"svf_assert_eq Fail. " << callNode->toString() << "\n";
-            assert(false);
+            if (ae->getAssertionFailurePolicy() ==
+                    AbstractInterpretation::AssertionFailurePolicy::FailFast)
+                assert(false);
         }
         return;
     };
@@ -278,8 +282,10 @@ void AbsExtAPI::collectCheckPoint()
         {
             if (const FunObjVar *fun = call->getCalledFunction())
             {
-                if (ae_checkpoint_names.find(fun->getName()) !=
-                        ae_checkpoint_names.end())
+                if (ae->getAssertionFailurePolicy() ==
+                        AbstractInterpretation::AssertionFailurePolicy::FailFast &&
+                        ae_checkpoint_names.find(fun->getName()) !=
+                            ae_checkpoint_names.end())
                 {
                     checkpoints.insert(call);
                 }

@@ -100,6 +100,15 @@ public:
         NO_MAIN
     };
 
+    /// Controls whether assertion checkpoints abort AE when they cannot be
+    /// verified. FailFast preserves the standalone tool's behavior; Continue
+    /// lets library clients collect candidate assertions after AE completes.
+    enum class AssertionFailurePolicy
+    {
+        FailFast,
+        Continue
+    };
+
     virtual void runOnModule();
 
     /// Destructor
@@ -124,6 +133,16 @@ public:
     void addDetector(std::unique_ptr<AEDetector> detector)
     {
         detectors.push_back(std::move(detector));
+    }
+
+    void setAssertionFailurePolicy(AssertionFailurePolicy policy)
+    {
+        assertionFailurePolicy = policy;
+    }
+
+    AssertionFailurePolicy getAssertionFailurePolicy() const
+    {
+        return assertionFailurePolicy;
     }
 
     /// Retrieve SVFVar given its ID; asserts if no such variable exists
@@ -331,6 +350,8 @@ private:
 
     std::vector<std::unique_ptr<AEDetector>> detectors;
     AbsExtAPI* utils;
+    AssertionFailurePolicy assertionFailurePolicy{
+        AssertionFailurePolicy::FailFast};
 
 protected:
     /// Data and helpers reachable from SparseAbstractInterpretation.
