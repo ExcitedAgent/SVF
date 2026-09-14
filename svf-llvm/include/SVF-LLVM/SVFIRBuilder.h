@@ -307,10 +307,14 @@ protected:
         if(AddrStmt *edge = pag->addAddrStmt(src, dst))
         {
             setCurrentBBAndValueForPAGEdge(edge);
+            setAllocationByteExtent(edge);
             return edge;
         }
         return nullptr;
     }
+
+    /// Produce the allocation fact inside SVF, independent of legacy capped sizes.
+    void setAllocationByteExtent(AddrStmt* edge);
 
     /// Add Address edge from allocinst with arraysize like "%4 = alloca i8, i64 3"
     inline AddrStmt* addAddrWithStackArraySz(NodeID src, NodeID dst, llvm::AllocaInst& inst)

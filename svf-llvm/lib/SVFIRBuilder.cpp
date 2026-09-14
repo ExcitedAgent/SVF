@@ -42,11 +42,110 @@
 #include "Graphs/CallGraph.h"
 #include "Util/Options.h"
 #include "Util/SVFUtil.h"
+#include <limits>
 
 using namespace std;
 using namespace SVF;
 using namespace SVFUtil;
 using namespace LLVMUtil;
+
+
+void SVFIRBuilder::setAllocationByteExtent(AddrStmt* edge)
+{
+    using Extent = AllocationByteExtent;
+    auto fail = [edge](Extent::Status reason)
+    {
+        edge->setAllocationByteExtent(Extent::unavailable(reason));
+    };
+    const auto* object = SVFUtil::dyn_cast<BaseObjVar>(edge->getRHSVar());
+    if (!object || !llvmModuleSet()->hasLLVMValue(object))
+        return fail(Extent::MissingDescription);
+    const llvm::Value* allocation = llvmModuleSet()->getLLVMValue(object);
+    std::vector<const llvm::Value*> values;
+    const llvm::Type* layout = nullptr;
+    if (const auto* global = llvm::dyn_cast<llvm::GlobalVariable>(allocation))
+        layout = global->getValueType();
+    else if (const auto* stack = llvm::dyn_cast<llvm::AllocaInst>(allocation))
+    {
+        layout = stack->getAllocatedType();
+        values.push_back(stack->getArraySize());
+    }
+    else if (const auto* call = llvm::dyn_cast<llvm::CallBase>(allocation))
+    {
+        const auto* function = call->getCalledFunction();
+        if (!object->isHeap() || !function) return fail(Extent::MissingDescription);
+        std::string description;
+        bool found = false;
+        for (auto annotation : llvmModuleSet()->getExtFuncAnnotations(function))
+        {
+            while (!annotation.empty() && annotation.back() == '\0') annotation.pop_back();
+            if (annotation.rfind("AllocSize:", 0) != 0) continue;
+            if (found) return fail(Extent::ConflictingDescriptions);
+            found = true;
+            description = annotation.substr(10);
+        }
+        if (!found) return fail(Extent::MissingDescription);
+        if (description == "UNKNOWN") return fail(Extent::UnknownDescription);
+        if (description.empty()) return fail(Extent::InvalidDescription);
+        std::size_t begin = 0;
+        while (begin < description.size())
+        {
+            const auto end = description.find('*', begin);
+            const auto term = description.substr(begin, end == std::string::npos ? end : end - begin);
+            if (term.rfind("Arg", 0) != 0 || term.size() == 3)
+                return fail(Extent::InvalidDescription);
+            u64_t index = 0;
+            for (std::size_t i = 3; i < term.size(); ++i)
+            {
+                if (term[i] < '0' || term[i] > '9')
+                    return fail(Extent::InvalidDescription);
+                const auto digit = static_cast<u64_t>(term[i] - '0');
+                if (index > (std::numeric_limits<u32_t>::max() - digit) / 10)
+                    return fail(Extent::InvalidDescription);
+                index = index * 10 + digit;
+            }
+            if (index >= call->arg_size()) return fail(Extent::InvalidOperand);
+            values.push_back(call->getArgOperand(index));
+            if (end == std::string::npos) break;
+            begin = end + 1;
+            if (begin == description.size()) return fail(Extent::InvalidDescription);
+        }
+    }
+    else return fail(Extent::MissingDescription);
+
+    u64_t scale = 1;
+    if (layout)
+    {
+        if (!layout->isSized()) return fail(Extent::UnavailableLayout);
+        const auto size = llvmModuleSet()->getMainLLVMModule()->getDataLayout()
+                              .getTypeAllocSize(const_cast<llvm::Type*>(layout));
+        if (size.isScalable()) return fail(Extent::UnavailableLayout);
+        scale = size.getFixedValue();
+        if (scale > static_cast<u64_t>(std::numeric_limits<s64_t>::max()))
+            return fail(Extent::UnrepresentableLayout);
+    }
+    std::vector<const ValVar*> operands;
+    for (const auto* value : values)
+    {
+        if (!value || !value->getType()->isIntegerTy())
+            return fail(Extent::InvalidOperand);
+        if (value->getType()->getIntegerBitWidth() > 64)
+            return fail(Extent::UnrepresentableOperand);
+        if (const auto* constant = llvm::dyn_cast<llvm::ConstantInt>(value))
+        {
+            // Allocation sizes are nonnegative; retain only constants whose
+            // published signed and unsigned SVF interpretations agree.
+            const auto integer = LLVMUtil::getIntegerValue(constant);
+            if (integer.first < 0 || static_cast<u64_t>(integer.first) != integer.second)
+                return fail(Extent::UnrepresentableOperand);
+        }
+        const auto* operand = SVFUtil::dyn_cast<ValVar>(pag->getGNode(getValueNode(value)));
+        if (!operand || !SVFUtil::isa<SVFIntegerType>(operand->getType()))
+            return fail(Extent::InvalidOperand);
+        operands.push_back(operand);
+    }
+    edge->setAllocationByteExtent(Extent::exact(scale, std::move(operands)));
+}
 
 
 /*!

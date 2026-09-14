@@ -34,6 +34,7 @@
 #include "Graphs/GenericGraph.h"
 #include "MemoryModel/AccessPath.h"
 #include "Util/GeneralType.h"
+#include "SVFIR/AllocationByteExtent.h"
 
 namespace SVF
 {
@@ -384,6 +385,7 @@ private:
     void operator=(const AddrStmt&); ///< place holder
 
     std::vector<SVFVar*> arrSize;	///< Array size of the allocated memory
+    AllocationByteExtent allocationByteExtent;
 
 public:
     /// Methods for support type inquiry through isa, cast, and dyn_cast:
@@ -417,6 +419,9 @@ public:
     {
         return arrSize;
     }
+
+    const AllocationByteExtent& getAllocationByteExtent() const { return allocationByteExtent; }
+    void setAllocationByteExtent(AllocationByteExtent extent) { allocationByteExtent = std::move(extent); }
 
     virtual bool isPTAEdge() const override
     {
