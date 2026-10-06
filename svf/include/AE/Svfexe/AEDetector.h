@@ -139,6 +139,25 @@ class BufOverflowDetector : public AEDetector
 {
     friend class AbstractInterpretation;
 public:
+    /// Values used by an existing buffer check that returned unsafe.
+    /// These are AE diagnostics, not an exact allocation extent or a proof.
+    /// For GEPs, checkedOffset is the computed pointer offset. For memory
+    /// APIs, it includes the last accessed byte relative to the base object.
+    /// Native pointers borrow the analyzed graph. Repeated checks are retained.
+    struct BufferAccessInfo
+    {
+        const ICFGNode* node;
+        const ValVar* pointer;
+        const BaseObjVar* object;
+        IntervalValue checkedOffset;
+        u32_t bufferSize;
+    };
+
+    const std::vector<BufferAccessInfo>& getBufferAccesses() const
+    {
+        return bufferAccesses;
+    }
+
     /**
      * @brief Constructor initializes the detector kind to BUF_OVERFLOW and sets up external API buffer overflow rules.
      */
@@ -323,6 +342,7 @@ private:
 
 private:
     Map<const GepObjVar*, IntervalValue> gepObjOffsetFromBase; ///< Maps GEP objects to their offsets from the base.
+    std::vector<BufferAccessInfo> bufferAccesses;
     Map<std::string, std::vector<std::pair<u32_t, u32_t>>> extAPIBufOverflowCheckRules; ///< Rules for checking buffer overflows in external APIs.
     Set<std::string> bugLoc; ///< Set of locations where bugs have been reported.
     SVFBugReport recoder; ///< Recorder for abstract execution bugs.

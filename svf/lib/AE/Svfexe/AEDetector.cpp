@@ -88,6 +88,8 @@ void BufOverflowDetector::detect(const ICFGNode* node)
                     IntervalValue accessOffset = getAccessOffset(objId, gep);
                     if (accessOffset.ub().getIntNumeral() >= size)
                     {
+                        bufferAccesses.push_back({node, gep->getLHSVar(),
+                            svfir->getBaseObject(objId), accessOffset, size});
                         AEException bug(stmt->toString());
                         addBugToReporter(bug, stmt->getICFGNode());
                     }
@@ -514,6 +516,8 @@ bool BufOverflowDetector::canSafelyAccessMemory(const SVF::ValVar* value, const 
         // if the offset is greater than the size, return false
         if (offset.ub().getIntNumeral() >= size)
         {
+            bufferAccesses.push_back({node, value,
+                svfir->getBaseObject(objId), offset, size});
             return false;
         }
     }
