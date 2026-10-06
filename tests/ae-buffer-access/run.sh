@@ -13,7 +13,7 @@ trap 'rm -rf "$temporary"' EXIT
     "$root/tests/ae-buffer-access/check.cpp" \
     -L"$build/lib" -L"$LLVM_DIR/lib" -L"$Z3_ROOT/bin" \
     -Wl,-rpath,"$build/lib:$LLVM_DIR/lib:$Z3_ROOT/bin" \
-    -lSvfLLVM -lSvfCore -lz3 -lLLVM -o "$temporary/check"
+    -lSvfLLVM -lSvfCore -lz3 -o "$temporary/check"
 for scenario in safe stack dynamic heap nested boundary copy copy_safe range repeated; do
     "$LLVM_DIR/bin/clang" -g -O0 -Xclang -disable-O0-optnone -fno-builtin \
         -D"${scenario^^}" -S -emit-llvm "$root/tests/ae-buffer-access/access.c" \
