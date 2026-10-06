@@ -48,6 +48,109 @@ using namespace SVF;
 using namespace SVFUtil;
 using namespace LLVMUtil;
 
+void SVFIRBuilder::setAllocationSizeOperands(AddrStmt* edge)
+{
+    const auto* object = SVFUtil::dyn_cast<BaseObjVar>(edge->getRHSVar());
+    if (!object || !llvmModuleSet()->hasLLVMValue(object))
+        return;
+    const llvm::Value* allocation = llvmModuleSet()->getLLVMValue(object);
+    std::vector<const llvm::Value*> values;
+    const llvm::Type* layout = nullptr;
+    if (const auto* global = llvm::dyn_cast<llvm::GlobalVariable>(allocation))
+        layout = global->getValueType();
+    else if (const auto* stack = llvm::dyn_cast<llvm::AllocaInst>(allocation))
+    {
+        layout = stack->getAllocatedType();
+        values.push_back(stack->getArraySize());
+    }
+    else if (const auto* call = llvm::dyn_cast<llvm::CallBase>(allocation))
+    {
+        const auto* function = call->getCalledFunction();
+        if (!object->isHeap() || !function) return;
+        std::string description;
+        bool found = false;
+        for (auto annotation : llvmModuleSet()->getExtFuncAnnotations(function))
+        {
+            while (!annotation.empty() && annotation.back() == '\0') annotation.pop_back();
+            if (annotation.rfind("AllocSize:", 0) != 0) continue;
+            if (found) return;
+            found = true;
+            description = annotation.substr(10);
+        }
+        if (!found) return;
+        if (description == "UNKNOWN") return;
+        if (description.empty()) return;
+        std::size_t begin = 0;
+        while (begin < description.size())
+        {
+            const auto end = description.find('*', begin);
+            const auto term = description.substr(begin, end == std::string::npos ? end : end - begin);
+            if (term.rfind("Arg", 0) != 0 || term.size() == 3)
+                return;
+            u64_t index = 0;
+            for (std::size_t i = 3; i < term.size(); ++i)
+            {
+                if (term[i] < '0' || term[i] > '9')
+                    return;
+                const auto digit = static_cast<u64_t>(term[i] - '0');
+                if (index > (std::numeric_limits<u32_t>::max() - digit) / 10)
+                    return;
+                index = index * 10 + digit;
+            }
+            if (index >= call->arg_size()) return;
+            values.push_back(call->getArgOperand(index));
+            if (end == std::string::npos) break;
+            begin = end + 1;
+            if (begin == description.size()) return;
+        }
+    }
+    else return;
+
+    u64_t scale = 1;
+    if (layout)
+    {
+        if (!layout->isSized()) return;
+        const auto size = llvmModuleSet()->getMainLLVMModule()->getDataLayout()
+                              .getTypeAllocSize(const_cast<llvm::Type*>(layout));
+        if (size.isScalable()) return;
+        scale = size.getFixedValue();
+        if (scale > static_cast<u64_t>(std::numeric_limits<s64_t>::max()))
+            return;
+    }
+    std::vector<SVFVar*> operands;
+    for (const auto* value : values)
+    {
+        if (!value || !value->getType()->isIntegerTy())
+            return;
+        if (value->getType()->getIntegerBitWidth() > 64)
+            return;
+        if (const auto* constant = llvm::dyn_cast<llvm::ConstantInt>(value))
+        {
+            // Allocation sizes are nonnegative; retain only constants whose
+            // published signed and unsigned SVF interpretations agree.
+            const auto integer = LLVMUtil::getIntegerValue(constant);
+            if (integer.first < 0 || static_cast<u64_t>(integer.first) != integer.second)
+                return;
+        }
+        auto* operand = SVFUtil::dyn_cast<ValVar>(pag->getGNode(getValueNode(value)));
+        if (!operand || !SVFUtil::isa<SVFIntegerType>(operand->getType()))
+            return;
+        operands.push_back(operand);
+    }
+    // Keep the existing operand API in bytes, including uncapped layout sizes.
+    // Publish only after validating every factor; empty means unavailable.
+    if (layout)
+    {
+        const auto id = NodeIDAllocator::get()->allocateValueId();
+        const auto* type = llvmModuleSet()->getSVFType(
+            llvm::Type::getInt64Ty(llvmModuleSet()->getContext()));
+        pag->addConstantIntValNode(id, {static_cast<s64_t>(scale), scale},
+                                  edge->getICFGNode(), type);
+        operands.push_back(pag->getGNode(id));
+    }
+    for (auto* operand : operands) edge->addArrSize(operand);
+}
+
 
 /*!
  * Start building SVFIR here

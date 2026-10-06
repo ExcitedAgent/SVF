@@ -413,7 +413,9 @@ public:
     }
 
     ///< get array size of the allocated memory
-    inline const std::vector<SVFVar*>& getArrSize() const   //TODO:getSizeVars
+    /// Allocation byte-count product. Empty means unavailable, never zero.
+    /// Layout factors are uncapped constants; heap operands follow AllocSize.
+    inline const std::vector<SVFVar*>& getArrSize() const
     {
         return arrSize;
     }

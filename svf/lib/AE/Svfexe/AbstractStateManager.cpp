@@ -382,12 +382,14 @@ u32_t AbstractInterpretation::getAllocaInstByteSize(const AddrStmt* addr)
         else
         {
             const std::vector<SVFVar*>& sizes = addr->getArrSize();
+            if (sizes.empty()) return Options::MaxFieldLimit();
             u32_t elementSize = 1;
             u64_t res = elementSize;
             for (const SVFVar* value : sizes)
             {
-                const AbstractValue& sizeVal = getAbsValue(value, node);
-                IntervalValue itv = sizeVal.getInterval();
+                const auto* constant = SVFUtil::dyn_cast<ConstIntValVar>(value);
+                IntervalValue itv = constant ? IntervalValue(constant->getSExtValue())
+                                            : getAbsValue(value, node).getInterval();
                 if (itv.isBottom())
                     itv = IntervalValue(Options::MaxFieldLimit());
                 res = res * itv.ub().getIntNumeral() > Options::MaxFieldLimit()
@@ -399,4 +401,3 @@ u32_t AbstractInterpretation::getAllocaInstByteSize(const AddrStmt* addr)
     assert(false && "Addr rhs value is not ObjVar");
     abort();
 }
-

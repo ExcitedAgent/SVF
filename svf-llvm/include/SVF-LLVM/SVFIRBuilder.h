@@ -307,67 +307,23 @@ protected:
         if(AddrStmt *edge = pag->addAddrStmt(src, dst))
         {
             setCurrentBBAndValueForPAGEdge(edge);
+            setAllocationSizeOperands(edge);
             return edge;
         }
         return nullptr;
     }
 
-    /// Add Address edge from allocinst with arraysize like "%4 = alloca i8, i64 3"
-    inline AddrStmt* addAddrWithStackArraySz(NodeID src, NodeID dst, llvm::AllocaInst& inst)
+    /// Populate the existing size operands with a validated byte product.
+    void setAllocationSizeOperands(AddrStmt* edge);
+
+    inline AddrStmt* addAddrWithStackArraySz(NodeID src, NodeID dst, llvm::AllocaInst&)
     {
-        AddrStmt* edge = addAddrEdge(src, dst);
-        if (inst.getArraySize())
-        {
-            edge->addArrSize(pag->getGNode(getValueNode(inst.getArraySize())));
-        }
-        return edge;
+        return addAddrEdge(src, dst);
     }
 
-    /// Add Address edge from ext call with args like "%5 = call i8* @malloc(i64 noundef 5)"
-    inline AddrStmt* addAddrWithHeapSz(NodeID src, NodeID dst, const CallBase* cs)
+    inline AddrStmt* addAddrWithHeapSz(NodeID src, NodeID dst, const CallBase*)
     {
-        // get name of called function
-        AddrStmt* edge = addAddrEdge(src, dst);
-
-        llvm::Function* calledFunc = cs->getCalledFunction();
-        std::string functionName;
-        if (calledFunc)
-        {
-            functionName = calledFunc->getName().str();
-        }
-        else
-        {
-            SVFUtil::writeWrnMsg("not support indirect call to add AddrStmt.\n");
-        }
-        if (functionName == "malloc")
-        {
-            if (cs->arg_size() > 0)
-            {
-                const llvm::Value* val = cs->getArgOperand(0);
-                edge->addArrSize(pag->getGNode(getValueNode(val)));
-            }
-        }
-        // Check if the function called is 'calloc' and process its arguments.
-        // e.g. "%5 = call i8* @calloc(1, 8)", edge should add two SVFValue (1 and 8)
-        else if (functionName == "calloc")
-        {
-            if (cs->arg_size() > 1)
-            {
-                edge->addArrSize(
-                    pag->getGNode(getValueNode(cs->getArgOperand(0))));
-                edge->addArrSize(
-                    pag->getGNode(getValueNode(cs->getArgOperand(1))));
-            }
-        }
-        else
-        {
-            if (cs->arg_size() > 0)
-            {
-                const llvm::Value* val = cs->getArgOperand(0);
-                edge->addArrSize(pag->getGNode(getValueNode(val)));
-            }
-        }
-        return edge;
+        return addAddrEdge(src, dst);
     }
 
     inline CopyStmt* addCopyEdge(NodeID src, NodeID dst, CopyStmt::CopyKind kind)
