@@ -6,8 +6,10 @@ add_subdirectory(MTA)
 add_subdirectory(CFL)
 add_subdirectory(LLVM2SVF)
 add_subdirectory(AE)
+add_subdirectory(ModelBundle)
 
 set(ALL_TOOLS
+    svf-model
     ae
     cfl
     dvf
